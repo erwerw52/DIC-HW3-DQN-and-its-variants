@@ -21,7 +21,6 @@ with col1:
     st.subheader("HW3-1 · Naive DQN")
     st.markdown("""
 **Mode**: Static / Random
-**Weight**: 30%
 
 - Basic DQN training loop
 - ε-greedy exploration
@@ -34,7 +33,6 @@ with col2:
     st.subheader("HW3-2 · Enhanced DQN Variants")
     st.markdown("""
 **Mode**: Player
-**Weight**: 40%
 
 - **Double DQN** — decouple action selection from Q evaluation to reduce overestimation
 - **Dueling DQN** — split Q into V(s) + A(s,a) for better state-value learning
@@ -46,7 +44,6 @@ with col3:
     st.subheader("HW3-3 · PyTorch Lightning")
     st.markdown("""
 **Mode**: Random
-**Weight**: 30%
 
 - Full DQN converted to `LightningModule`
 - **Gradient Clipping** (configurable)

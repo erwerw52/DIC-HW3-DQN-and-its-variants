@@ -2,6 +2,8 @@
 
 深度強化學習作業，在 Gridworld 環境上實作 DQN 各種變體，以互動式 Streamlit 應用程式呈現。
 
+🚀 **Demo**：[https://dic-hw3-dqn-and-its-variants-q9emxf7c4ec6bem2ykavsn.streamlit.app/](https://dic-hw3-dqn-and-its-variants-q9emxf7c4ec6bem2ykavsn.streamlit.app/)
+
 ## 遊戲環境
 
 **Gridworld 4×4** — 格狀導航任務，Agent 學習抵達目標並避開陷阱。
