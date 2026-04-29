@@ -72,7 +72,7 @@ venv/bin/streamlit run app.py
 
 ---
 
-## HW3-1：Naive DQN — Static Mode（30%）
+## HW3-1：Naive DQN — Static Mode
 
 ### 網路架構
 
@@ -110,7 +110,7 @@ venv/bin/streamlit run app.py
 
 ---
 
-## HW3-2：Enhanced DQN Variants — Player Mode（40%）
+## HW3-2：Enhanced DQN Variants — Player Mode
 
 ### Double DQN
 
@@ -174,7 +174,7 @@ app 會同時訓練兩個變體，並顯示平滑後的 loss 對比圖。
 
 ---
 
-## HW3-3：PyTorch Lightning — Random Mode（30%）
+## HW3-3：PyTorch Lightning — Random Mode
 
 將 Vanilla DQN 的訓練迴圈改寫為 `LightningModule`，並加入多項訓練穩定化技巧。
 
