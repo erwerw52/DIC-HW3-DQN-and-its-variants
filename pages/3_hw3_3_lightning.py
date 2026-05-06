@@ -20,10 +20,13 @@ import matplotlib.pyplot as plt
 
 from Gridworld import Gridworld
 from src.models import DQN, make_target_network
-from src.trainer import test_model, ACTION_SET
+from src.trainer import test_model, evaluate_model, ACTION_SET
 
 st.set_page_config(page_title="HW3-3 Lightning DQN", layout="wide")
 st.title("HW3-3: PyTorch Lightning DQN — Random Mode")
+
+device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+st.sidebar.success(f"Using device: {device}")
 
 # ── Architecture explanation ─────────────────────────────────────────────────
 with st.expander("PyTorch Lightning conversion explained", expanded=False):
@@ -204,7 +207,7 @@ class StreamlitCallback(pl.Callback):
 
 # ── Sidebar config ────────────────────────────────────────────────────────────
 st.sidebar.header("Hyperparameters")
-epochs      = st.sidebar.slider("Epochs", 500, 5000, 1000, step=500)
+epochs      = st.sidebar.slider("Epochs", 100, 800, 500, step=100)
 gamma       = st.sidebar.slider("Gamma (γ)", 0.5, 0.99, 0.9)
 lr          = st.sidebar.select_slider("Learning Rate", [1e-4, 5e-4, 1e-3, 5e-3], value=1e-3)
 sync_freq   = st.sidebar.slider("Target Sync Freq", 100, 1000, 500, step=100)
@@ -218,35 +221,68 @@ st.sidebar.markdown("✅ Target Network")
 st.sidebar.markdown("✅ Experience Replay")
 st.sidebar.markdown("✅ Double DQN target")
 
+force_retrain = st.sidebar.checkbox("Force Retrain (Ignore Cache)", value=False)
+
+def get_model_cache_path():
+    return os.path.join(os.path.dirname(__file__), "..", "models_cache", f"hw3_lightning_{epochs}.pt")
+
 # ── Train ─────────────────────────────────────────────────────────────────────
-if st.button("Start Training"):
+if st.button("Load / Start Training"):
+    cache_path = get_model_cache_path()
+    
     lightning_model = DQNLightning(
         lr=lr, gamma=gamma, sync_freq=sync_freq,
         total_epochs=epochs, mode='random', grad_clip=grad_clip
     )
+    
+    if os.path.exists(cache_path) and not force_retrain:
+        st.info("Loading cached model...")
+        checkpoint = torch.load(cache_path, map_location=device, weights_only=True)
+        lightning_model.load_state_dict(checkpoint["model_state_dict"])
+        losses = checkpoint["loss_history"]
+        
+        # Override the module's loss to maintain UI compatibility
+        lightning_model._losses = losses
+        st.success("Loaded PyTorch Lightning model from cache perfectly!")
+    else:
+        st.warning("Training PyTorch Lightning model from scratch...")
+        progress   = st.progress(0)
+        status     = st.empty()
+        chart      = st.empty()
+
+        cb = StreamlitCallback(epochs, progress, status, chart)
+
+        # Let Lightning use the requested device if possible
+        accelerator = "gpu" if device.type in ["cuda", "mps"] else "cpu"
+        # However, for this tiny model with manual_optimization, CPU is often faster
+        
+        trainer = pl.Trainer(
+            max_epochs=epochs,
+            accelerator="cpu",   # MPS dispatch overhead > gain for this tiny model
+            callbacks=[cb],
+            enable_checkpointing=False,
+            logger=False,
+            enable_progress_bar=False,
+        )
+
+        with st.spinner("Training via Lightning..."):
+            trainer.fit(lightning_model)
+
+        losses = lightning_model._losses
+        final_loss = losses[-1] if losses else float('nan')
+        st.success(f"Training complete! Final loss: {final_loss:.4f}")
+        
+        checkpoint = {
+            "model_state_dict": lightning_model.state_dict(),
+            "loss_history": losses
+        }
+        torch.save(checkpoint, cache_path)
+
     st.session_state["hw3_model"] = lightning_model
 
-    progress   = st.progress(0)
-    status     = st.empty()
-    chart      = st.empty()
-
-    cb = StreamlitCallback(epochs, progress, status, chart)
-
-    trainer = pl.Trainer(
-        max_epochs=epochs,
-        accelerator="cpu",   # MPS dispatch overhead > gain for this tiny model
-        callbacks=[cb],
-        enable_checkpointing=False,
-        logger=False,
-        enable_progress_bar=False,
-    )
-
-    with st.spinner("Training..."):
-        trainer.fit(lightning_model)
-
+if "hw3_model" in st.session_state:
+    lightning_model = st.session_state["hw3_model"]
     losses = lightning_model._losses
-    final_loss = losses[-1] if losses else float('nan')
-    st.success(f"Training complete! Final loss: {final_loss:.4f}")
 
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(losses, linewidth=0.7, color="#A44CE8", alpha=0.6, label="raw")
@@ -256,7 +292,7 @@ if st.button("Start Training"):
         ax.plot(smoothed, linewidth=1.5, color="#6B1FBF", label="smoothed (50)")
     ax.set_xlabel("Update Step")
     ax.set_ylabel("Loss")
-    ax.set_title(f"Lightning DQN — random mode, {epochs} epochs, clip={grad_clip}")
+    ax.set_title(f"Lightning DQN — random mode, min({len(losses)}) updates, clip={grad_clip}")
     ax.legend()
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -265,24 +301,83 @@ if st.button("Start Training"):
 
 # ── Test ──────────────────────────────────────────────────────────────────────
 st.divider()
-st.subheader("Test Trained Model")
-test_mode = st.radio("Test mode", ["static", "player", "random"], horizontal=True)
-n_games   = st.slider("Games to test", 10, 500, 100, step=10)
+st.subheader("Model Evaluation & Visualization")
+import time
 
-if st.button("Run Test"):
-    entry = st.session_state.get("hw3_model")
-    if entry is None:
-        st.warning("Please train a model first.")
-    else:
+if "hw3_model" in st.session_state:
+    col1, col2 = st.columns(2)
+    with col1:
+        test_mode = st.selectbox("Visualize 1 game & Evaluate on:", ["static", "player", "random"])
+    with col2:
+        n_eval_games = st.slider("Episodes for Evaluation", 10, 100, 20, step=10)
+
+    if st.button("Watch Game & Evaluate"):
+        entry = st.session_state.get("hw3_model")
         model = entry.online
-        wins  = sum(test_model(model, mode=test_mode)[0] for _ in range(n_games))
-        win_pct = 100.0 * wins / n_games
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Games Played", n_games)
-        col2.metric("Wins", wins)
-        col3.metric("Win Rate", f"{win_pct:.1f}%")
+        
+        # Ensure device compatibility
+        model = model.to(device)
+        win, steps, boards, q_vals = test_model(model, mode=test_mode, device=device)
+        
+        st.write(f"**Game Result:** {'🏆 Won' if win else '💀 Lost/Timeout'}")
+        
+        col_board, col_q = st.columns([1, 1])
+        board_placeholder = col_board.empty()
+        q_placeholder = col_q.empty()
+        
+        if len(q_vals) < len(boards):
+            q_vals.insert(0, [0.0, 0.0, 0.0, 0.0])
+            
+        for step_idx in range(len(boards)):
+            fig, ax = plt.subplots(figsize=(4, 4))
+            ax.set_xlim(-0.5, 3.5)
+            ax.set_ylim(-0.5, 3.5)
+            ax.set_xticks(np.arange(-0.5, 4, 1))
+            ax.set_yticks(np.arange(-0.5, 4, 1))
+            ax.grid(color='black', linestyle='-', linewidth=2)
+            ax.set_xticklabels([])
+            ax.set_yticklabels([])
+            
+            board_grid = boards[step_idx]
+            for row in range(4):
+                for col in range(4):
+                    cell_item = board_grid[row][col]
+                    plt_y = 3 - row
+                    plt_x = col
+                    if cell_item == 'P':
+                        ax.text(plt_x, plt_y, '🤖', fontsize=40, ha='center', va='center')
+                    elif cell_item == '+':
+                        ax.text(plt_x, plt_y, '🏆', fontsize=40, ha='center', va='center')
+                    elif cell_item == '-':
+                        ax.text(plt_x, plt_y, '🔥', fontsize=40, ha='center', va='center')
+                    elif cell_item == 'W':
+                        ax.add_patch(plt.Rectangle((plt_x - 0.5, plt_y - 0.5), 1, 1, color='gray'))
+                        
+            ax.set_title(f"Lightning DQN — Step {step_idx}")
+            board_placeholder.pyplot(fig)
+            plt.close(fig)
+            
+            if step_idx > 0 or len(q_vals) > 0:
+                fig2, ax2 = plt.subplots(figsize=(4, 4))
+                actions = ['Up', 'Down', 'Left', 'Right']
+                current_q = q_vals[step_idx]
+                colors = ['#4C9BE8' if i != np.argmax(current_q) else '#FF6B6B' for i in range(4)]
+                ax2.bar(actions, current_q, color=colors)
+                ax2.set_title(f"Q-values (Move {step_idx})")
+                ax2.set_ylim(min(current_q) - 1, max(current_q) + 1)
+                q_placeholder.pyplot(fig2)
+                plt.close(fig2)
+                
+            time.sleep(0.5)
 
-        st.subheader("Sample Game Replay")
-        _, steps = test_model(model, mode=test_mode)
-        for step in steps:
-            st.code(step)
+        st.divider()
+        st.subheader(f"Evaluation Results ({test_mode} mode)")
+        with st.spinner("Running evaluation episodes..."):
+            win_rate, avg_reward = evaluate_model(model, mode=test_mode, episodes=n_eval_games, device=device)
+        
+        m_col1, m_col2 = st.columns(2)
+        m_col1.metric("Win Rate", f"{win_rate * 100:.1f} %")
+        m_col2.metric("Avg Reward", f"{avg_reward:.1f}")
+
+else:
+    st.info("Train or load a PyTorch Lightning model first.")
