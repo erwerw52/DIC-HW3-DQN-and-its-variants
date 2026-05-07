@@ -108,6 +108,10 @@ venv/bin/streamlit run app.py
 
 **預計訓練時間**：約 30 秒（1000 epochs，static mode）
 
+### 訓練結果
+
+![HW3-1 Training](assets/hw3_1_training.png)
+
 ---
 
 ## HW3-2：Enhanced DQN Variants — Player Mode
@@ -172,6 +176,10 @@ app 會同時訓練兩個變體，並顯示平滑後的 loss 對比圖。
 
 **預計訓練時間**：每個變體約 2 分鐘（2000 epochs，player mode）
 
+### 訓練結果
+
+![HW3-2 Comparison](assets/hw3_2_comparison.png)
+
 ---
 
 ## HW3-3：PyTorch Lightning — Random Mode
@@ -219,6 +227,10 @@ Online network 選動作、target network 評估 Q 值，減少高估偏差（�
 > 因此強制使用 `accelerator="cpu"`，速度約快 9 倍。
 
 **預計訓練時間**：約 3 分鐘（1000 epochs，random mode，CPU）
+
+### 訓練結果
+
+![HW3-3 Training](assets/hw3_3_training.png)
 
 ---
 

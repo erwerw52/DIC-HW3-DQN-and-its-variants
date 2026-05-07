@@ -159,6 +159,30 @@ if st.button("Load / Start Training"):
         st.session_state[key] = (online, losses)
 
 # ── Side-by-side comparison chart if both trained ──────────────────────
+if not run_both and (
+    ("hw2_double" in st.session_state and variant == "Double DQN") or
+    ("hw2_dueling" in st.session_state and variant == "Dueling DQN")
+):
+    st.divider()
+    key = "hw2_double" if variant == "Double DQN" else "hw2_dueling"
+    color = "#E8784C" if variant == "Double DQN" else "#4CE89B"
+    _, losses = st.session_state[key]
+
+    def smooth(x, w=50):
+        return np.convolve(x, np.ones(w)/w, mode='valid')
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(smooth(losses), label=variant, color=color, linewidth=1.2)
+    ax.set_xlabel("Episode (smoothed)")
+    ax.set_ylabel("Loss")
+    ax.set_title(f"{variant} — Training Loss (player mode)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    st.subheader(f"{variant} — Training Loss")
+    st.pyplot(fig)
+    plt.close(fig)
+
 if run_both and "hw2_double" in st.session_state and "hw2_dueling" in st.session_state:
     st.divider()
     st.subheader("Comparison: Double DQN vs Dueling DQN")
